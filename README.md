@@ -41,11 +41,11 @@ PORT=3000 go run main.go
 
 ### Building for Production
 ```bash
-# Build for current OS
-go build -o xendit-webhook-dumper
+# Check Go environment
+go env GOOS GOARCH
 
-# Build for Linux (if deploying to a Linux server)
-GOOS=linux GOARCH=amd64 go build -o xendit-webhook-dumper
+# Build for server
+GOOS=linux GOARCH=amd64 go build -o /var/www/xendit-webhook-dumper main.go
 ```
 
 ### Deploy with PM2
@@ -78,9 +78,7 @@ When code changes:
 2. Replace the existing binary
 3. Restart the service
 ```bash
-# Rebuild
-go build -o xendit-webhook-dumper
-
+# Rebuild using the same command as `### Building for Production`
 # Restart service
 pm2 restart xendit-webhook-dumper
 ```
