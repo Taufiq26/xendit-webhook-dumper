@@ -77,15 +77,15 @@ func HandleWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 	dateFolder := paidTime.Format("2006-01-02")
 
-	// Use home directory for storing webhooks
-	homeDir, err := os.UserHomeDir()
+	// Get current working directory
+	currentDir, err := os.Getwd()
 	if err != nil {
-		log.Printf("Error getting home directory: %v", err)
-		homeDir = "/root" // Fallback for server environment
+		log.Printf("Error getting current directory: %v", err)
+		currentDir = "." // fallback to current directory
 	}
 
-	// Create full path for storing webhooks
-	dirPath := filepath.Join(homeDir, "xendit-webhook-data", dateFolder)
+	// Create path relative to current directory
+	dirPath := filepath.Join(currentDir, "webhooks", "data", dateFolder)
 
 	// Ensure directory exists
 	if err := os.MkdirAll(dirPath, 0755); err != nil {
@@ -97,7 +97,7 @@ func HandleWebhook(w http.ResponseWriter, r *http.Request) {
 	// Create or append to the daily webhook file
 	filePath := filepath.Join(dirPath, "webhooks.json")
 
-	// Mutex to prevent concurrent file access
+	// Use a file-level mutex to prevent concurrent writes
 	var mu sync.Mutex
 	mu.Lock()
 	defer mu.Unlock()
