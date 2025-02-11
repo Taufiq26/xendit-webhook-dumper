@@ -3,12 +3,19 @@ package main
 import (
 	"log"
 	"net/http"
+	"os"
 	"xendit-webhook-dumper/webhooks"
 )
 
 func main() {
+	// Get port from environment variable, default to 8080 if not set
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+
 	http.HandleFunc("/xendit/webhook", webhooks.HandleWebhook)
 
-	log.Println("Server starting on :6969")
-	log.Fatal(http.ListenAndServe(":6969", nil))
+	log.Printf("Server starting on :%s", port)
+	log.Fatal(http.ListenAndServe(":"+port, nil))
 }
