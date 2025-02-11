@@ -85,7 +85,7 @@ func HandleWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create path relative to current directory
-	dirPath := filepath.Join(currentDir, "webhooks", "data", dateFolder)
+	dirPath := filepath.Join(currentDir, "webhooks", "data")
 
 	// Ensure directory exists
 	if err := os.MkdirAll(dirPath, 0755); err != nil {
@@ -94,8 +94,8 @@ func HandleWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create or append to the daily webhook file
-	filePath := filepath.Join(dirPath, "webhooks.json")
+	// Create file path with date as filename
+	filePath := filepath.Join(dirPath, dateFolder+".json")
 
 	// Use a file-level mutex to prevent concurrent writes
 	var mu sync.Mutex
