@@ -2,15 +2,13 @@ package webhooks
 
 import (
 	"encoding/json"
-	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
-
-	"github.com/google/uuid"
 )
 
 type XenditWebhook struct {
@@ -36,6 +34,18 @@ type XenditWebhook struct {
 	PaymentDestination     string `json:"payment_destination"`
 }
 
+// Webhook represents a single webhook entry
+type Webhook struct {
+	Timestamp time.Time     `json:"timestamp"`
+	Payload   XenditWebhook `json:"payload"`
+}
+
+// WebhookCollection is a thread-safe collection of webhooks
+type WebhookCollection struct {
+	mu       sync.Mutex
+	Webhooks []Webhook `json:"webhooks"`
+}
+
 func HandleWebhook(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -51,51 +61,78 @@ func HandleWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 	defer r.Body.Close()
 
-	// Log the raw payload for debugging
-	log.Printf("Received webhook payload: %s", string(body))
-
 	// Parse the webhook payload
-	var webhook XenditWebhook
-	if err := json.Unmarshal(body, &webhook); err != nil {
+	var webhookPayload XenditWebhook
+	if err := json.Unmarshal(body, &webhookPayload); err != nil {
 		log.Printf("Error parsing webhook payload: %v", err)
 		http.Error(w, "Error parsing webhook payload", http.StatusBadRequest)
 		return
 	}
 
 	// Determine the date for file organization
-	paidTime, err := time.Parse(time.RFC3339, webhook.PaidAt)
+	paidTime, err := time.Parse(time.RFC3339, webhookPayload.PaidAt)
 	if err != nil {
 		log.Printf("Error parsing paid_at time: %v. Using current time.", err)
 		paidTime = time.Now()
 	}
 	dateFolder := paidTime.Format("2006-01-02")
 
-	// Create date-based directory with full path
-	currentDir, err := os.Getwd()
+	// Use home directory for storing webhooks
+	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		log.Printf("Error getting current directory: %v", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
+		log.Printf("Error getting home directory: %v", err)
+		homeDir = "/root" // Fallback for server environment
 	}
 
-	dirPath := filepath.Join(currentDir, "webhooks", "data", dateFolder)
-	log.Printf("Attempting to create directory: %s", dirPath)
+	// Create full path for storing webhooks
+	dirPath := filepath.Join(homeDir, "xendit-webhook-data", dateFolder)
 
-	// Ensure directory exists with full permissions
+	// Ensure directory exists
 	if err := os.MkdirAll(dirPath, 0755); err != nil {
 		log.Printf("Error creating directory: %v", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
-	// Generate unique filename
-	filename := fmt.Sprintf("%s_%s.json", uuid.New().String(), webhook.ID)
-	filePath := filepath.Join(dirPath, filename)
+	// Create or append to the daily webhook file
+	filePath := filepath.Join(dirPath, "webhooks.json")
 
-	// Write webhook data to file
+	// Mutex to prevent concurrent file access
+	var mu sync.Mutex
+	mu.Lock()
+	defer mu.Unlock()
+
+	// Read existing webhooks or create new collection
+	var collection WebhookCollection
+	if _, err := os.Stat(filePath); !os.IsNotExist(err) {
+		// File exists, read existing content
+		existingData, err := os.ReadFile(filePath)
+		if err != nil {
+			log.Printf("Error reading existing file: %v", err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+
+		if len(existingData) > 0 {
+			if err := json.Unmarshal(existingData, &collection); err != nil {
+				log.Printf("Error parsing existing webhooks: %v", err)
+				http.Error(w, "Internal server error", http.StatusInternalServerError)
+				return
+			}
+		}
+	}
+
+	// Add new webhook to collection
+	newWebhook := Webhook{
+		Timestamp: time.Now(),
+		Payload:   webhookPayload,
+	}
+	collection.Webhooks = append(collection.Webhooks, newWebhook)
+
+	// Write updated collection back to file
 	file, err := os.Create(filePath)
 	if err != nil {
-		log.Printf("Error creating file %s: %v", filePath, err)
+		log.Printf("Error creating file: %v", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
@@ -104,8 +141,8 @@ func HandleWebhook(w http.ResponseWriter, r *http.Request) {
 	// Pretty print JSON
 	encoder := json.NewEncoder(file)
 	encoder.SetIndent("", "  ")
-	if err := encoder.Encode(webhook); err != nil {
-		log.Printf("Error writing to file %s: %v", filePath, err)
+	if err := encoder.Encode(collection); err != nil {
+		log.Printf("Error writing to file: %v", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
