@@ -6,7 +6,7 @@ module.exports = {
     cwd: "/path/to",  // Working directory
     env: {
       NODE_ENV: "production",
-      PORT: 3000
+      PORT: "3000"
     },
     watch: false,
     max_memory_restart: "200M"

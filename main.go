@@ -14,6 +14,9 @@ func main() {
 		port = "8080"
 	}
 
+	// Add debug logging to see what's happening
+	log.Printf("PORT environment variable: %s", port)
+
 	http.HandleFunc("/xendit/webhook", webhooks.HandleWebhook)
 
 	log.Printf("Server starting on :%s", port)
